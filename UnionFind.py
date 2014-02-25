@@ -55,6 +55,14 @@ class Parents:
         else:
             self._parents[obj]['weight'] += weight
 
+    def items(self):
+        if self.db is not None:
+            res = {el.pop('_id'): el for el in self.db[self.collection].find()}
+        else:
+            res = self._parents
+        for el in res.items():
+            yield el
+
 class UnionFind:
     """Union-find data structure.
 
@@ -103,3 +111,15 @@ class UnionFind:
             if r != heaviest:
                 self.parents.inc_weight(heaviest, self.parents[r]['weight'])
                 self.parents[r] = heaviest
+
+    def consolidate(self, db, collection):
+        """
+        Consolidate in-memory disjoint sets in a mongodb collection
+
+        Parameters
+        -----------
+        :param db: Instance of pymongo.database.Database. Results will be stored here.
+        :param collection: String specifying the collection where to store the results. Collection is emptied if it already exists.
+        """
+        db.drop_collection(collection)
+        return db[collection].insert([dict(v, **{"_id": k}) for k, v in self.parents.items()])
