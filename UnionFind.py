@@ -14,7 +14,7 @@ class Parents:
             raise TypeError('db is neither a valid instance of pymongo.database.Database nor None')
 
         if db is None:
-            self._parents = []
+            self._parents = {}
         
         self.db = db
         self.collection = collection
@@ -23,7 +23,7 @@ class Parents:
         if self.db is not None:
             return obj in list(self.db[self.collection].find({'_id': obj}, {'_id': 1}))
         else:
-            return obj in self._parents.keys()
+            return obj in self._parents
             
     def __getitem__(self, obj):
         if self.db is not None:
@@ -42,7 +42,7 @@ class Parents:
                 obj_el['parent'] = parent_el['_id']
             self.db[self.collection].save(obj_el)                
         else:
-            if not obj not in self._parents:
+            if obj not in self._parents:
                 self._parents[obj] = {'parent': parent, 'weight': 1}
             else:
                 self._parents[obj]['parent'] = parent
