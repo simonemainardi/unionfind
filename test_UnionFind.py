@@ -5,9 +5,14 @@ from pprint import pprint
 dbhost = '192.168.70.26'
 testdbname = 'test_unionfind'
 
+client = MongoClient(dbhost)
+db = client[testdbname]
+collection = 'unionfind'
+
+
 class TestUnionFind:
-    def __init__(self, db=None, collection=None):
-        self.uf = UnionFind(db, collection)
+    def __init__(self, _db=None, _collection=None):
+        self.uf = UnionFind(_db, _collection)
         assert self.uf is not None
 
     def test_insertion(self):
@@ -47,17 +52,50 @@ class TestUnionFind:
         assert self.uf['mike'] == self.uf['albert']
         self.uf.parents['albert']['weight'] == self.uf.parents['mike']['weight'] + 2 == 4
 
+    def test_consolidate(self):
+        db.drop_collection(collection)
+        self.uf.consolidate(db, collection)
+        # instantiate a new unionfind instance that uses db stuff
+        uf2 = UnionFind(db, collection)
+
+        for el in db[collection].find():
+            # check if everything has been correctly stored into the db
+            assert el['_id'] in self.uf.parents
+            assert el['parent'] == self.uf.parents[el['_id']]['parent']
+            assert el['weight'] == self.uf.parents[el['_id']]['weight']
+
+            # check if the new unionfind structure, initialized from
+            # the db contents, actually contains the same elements
+            assert el['_id'] in uf2.parents
+            # does this guy have the same root?
+            assert self.uf[el['_id']] == uf2[el['_id']]
+            # and the same weight?
+            assert self.uf.parents[el['_id']]['weight'] == uf2.parents[el['_id']]['weight']
+
+
 def test_unionfind():
     tuf = TestUnionFind()
     tuf.test_insertion()
     tuf.test_union()
 
+
 def test_unionfind_mongodb():
-    client = MongoClient(dbhost)
-    client.drop_database(testdbname)
-    db = client[testdbname]
-    tuf = TestUnionFind(db, 'test_collection')
+    client.drop_database(db)
+
+    tuf = TestUnionFind(db, collection)
     tuf.test_insertion()
     tuf.test_union()
-    pprint(list(db['test_collection'].find()))
-    client.drop_database(testdbname)
+
+    client.drop_database(db)
+
+
+def test_unionfind_consolidate():
+    client.drop_database(db)
+
+    tuf = TestUnionFind()
+    tuf.test_insertion()
+    tuf.test_union()
+    tuf.test_consolidate()
+
+    client.drop_database(db)
+
