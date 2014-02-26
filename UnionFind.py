@@ -22,7 +22,7 @@ class Parents:
             
     def __contains__(self, obj):
         if self.db is not None:
-            return obj in list(self.db[self.collection].find({'_id': obj}, {'_id': 1}))
+            return self.db[self.collection].find({'_id': obj}, {'_id': 1}).count() > 0
         else:
             return obj in self._parents
             
@@ -106,7 +106,7 @@ class UnionFind:
 
     def union(self, *objects):
         """Find the sets containing the objects and merge them all."""
-        roots = [self.parents[x]['parent'] for x in objects]
+        roots = [self[x] for x in objects]
         heaviest = max([(self.parents[r]['weight'], r) for r in roots])[1]
         for r in roots:
             if r != heaviest:
