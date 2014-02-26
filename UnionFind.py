@@ -10,7 +10,21 @@ Changes to include mongodb persistence for disjoint sets included by Simone Main
 
 
 class Parents:
+    """
+    Handle disjoint sets, either using built-in python dictionaries or
+    via mongodb.
+
+    The user that is interested in union-find data structures, should not
+    use this class directly. Indeed, the class UnionFind already implements
+    union-find features.
+    """
     def __init__(self, db=None, collection=None):
+        """
+        Parameters:
+        -----------
+        :param db: an instance of pymongo.database.Database or None
+        :param collection: a string representing the collection in the db or None
+        """
         if not isinstance(db, pymongo.database.Database) and not db == None:
             raise TypeError('db is neither a valid instance of pymongo.database.Database nor None')
 
@@ -79,6 +93,7 @@ class UnionFind:
     - X.union(item1, item2, ...) merges the sets containing each item
       into a single larger set.  If any item is not yet part of a set
       in X, it is added to X as one of the members of the merged set.
+
     """
     def __init__(self, db=None, collection=None):
         """Create a new empty union-find structure."""
