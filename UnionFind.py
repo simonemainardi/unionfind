@@ -8,6 +8,7 @@ with significant additional changes by D. Eppstein.
 Changes to include mongodb persistence for disjoint sets included by Simone Mainardi
 """
 
+
 class Parents:
     def __init__(self, db=None, collection=None):
         if not isinstance(db, pymongo.database.Database) and not db == None:
