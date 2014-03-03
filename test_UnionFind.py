@@ -2,7 +2,7 @@ from UnionFind import UnionFind
 from pymongo import MongoClient
 from pprint import pprint
 
-dbhost = '192.168.70.26'
+dbhost = 'localhost'
 testdbname = 'test_unionfind'
 
 client = MongoClient(dbhost)
@@ -43,6 +43,13 @@ class TestUnionFind:
         assert self.uf['john'] != self.uf['nathan']
         assert self.uf['john'] != self.uf['mike']
 
+        it_dict = {k: v for k, v in self.uf.items()}
+        assert 'john' in it_dict and it_dict['john'] == 'john'
+        assert 'albert' in it_dict and it_dict['albert'] == 'john'
+        assert 'nathan' in it_dict and it_dict['nathan'] == 'nathan'
+        assert 'mike' in it_dict and it_dict['mike'] == 'nathan'
+        it_dict.clear()
+
         # weights
         assert self.uf.parents['nathan']['weight'] == self.uf.parents['mike']['weight'] + 1 == 2
         assert self.uf.parents['john']['weight'] == self.uf.parents['albert']['weight'] + 1 == 2
@@ -51,6 +58,13 @@ class TestUnionFind:
         self.uf.union('mike', 'albert')
         assert self.uf['mike'] == self.uf['albert']
         self.uf.parents['albert']['weight'] == self.uf.parents['mike']['weight'] + 2 == 4
+
+        it_dict = {k: v for k, v in self.uf.items()}
+        assert 'john' in it_dict and it_dict['john'] == 'nathan'
+        assert 'albert' in it_dict and it_dict['albert'] == 'nathan'
+        assert 'nathan' in it_dict and it_dict['nathan'] == 'nathan'
+        assert 'mike' in it_dict and it_dict['mike'] == 'nathan'
+        it_dict.clear()
 
     def test_consolidate(self):
         db.drop_collection(collection)
