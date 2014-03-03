@@ -139,3 +139,10 @@ class UnionFind:
         """
         db.drop_collection(collection)
         return db[collection].insert([dict(v, **{"_id": k}) for k, v in self.parents.items()])
+
+    def items(self):
+        """
+        Return 2-tuples containing element and root of the set containing it
+        """
+        for item in self.parents.items():
+            yield (item[0], self[item[0]])
