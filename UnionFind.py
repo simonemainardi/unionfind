@@ -1,82 +1,125 @@
-import pymongo
 """UnionFind.py
+Python implementation of disjoint sets data structures.
+
+Changes to include mongodb persistence for disjoint sets included by Simone Mainardi.
 
 Original Union-find data structure based on Josiah Carlson's code,
 http://aspn.activestate.com/ASPN/Cookbook/Python/Recipe/215912
 with significant additional changes by D. Eppstein.
 
-Changes to include mongodb persistence for disjoint sets included by Simone Mainardi
 """
+import abc
+import pymongo
 
 
-class Parents:
+class Parents(object):
     """
-    Handle disjoint sets, either using built-in python dictionaries or
-    via mongodb.
+    Abstract class to define the interface of disjoint sets objects
+    """
+    __metaclass__ = abc.ABCMeta
+
+    @abc.abstractmethod
+    def __contains__(self, obj):
+        """ Return true if the object obj is present in the disjoint sets. """
+        return
+
+    @abc.abstractmethod
+    def __getitem__(self, obj):
+        """ Return the object obj if it is present in the disjoint sets. """
+        return
+
+    @abc.abstractmethod
+    def __setitem__(self, obj, parent):
+        """ Add the object obj to the disjoint sets with weight 1 if not present.
+        Then, update the parent member of the object obj with the argument parent.
+        """
+        return
+
+    @abc.abstractmethod
+    def inc_weight(self, obj, weight):
+        """ Increment the weight of the object obj by the value of the argument weight. """
+        return
+
+    @abc.abstractmethod
+    def items(self):
+        """ Return the objects in the disjoint sets as a list of 2-tuples (object, parent_object) """
+        return
+
+
+class MongoParents(Parents):
+    """
+    Handle disjoint sets, via mongodb.
 
     The user that is interested in union-find data structures, should not
     use this class directly. Indeed, the class UnionFind already implements
     union-find features.
     """
-    def __init__(self, db=None, collection=None):
+    def __init__(self, db, collection=None):
         """
         Parameters:
         -----------
         :param db: an instance of pymongo.database.Database or None
         :param collection: a string representing the collection in the db or None
         """
-        if not isinstance(db, pymongo.database.Database) and not db == None:
-            raise TypeError('db is neither a valid instance of pymongo.database.Database nor None')
+        if not isinstance(db, pymongo.database.Database):
+            raise TypeError('db must be a valid instance of pymongo.database.Database')
 
-        if db is None:
-            self._parents = {}
-        
         self.db = db
         self.collection = collection
-            
+
     def __contains__(self, obj):
-        if self.db is not None:
-            return self.db[self.collection].find({'_id': obj}, {'_id': 1}).count() > 0
-        else:
-            return obj in self._parents
-            
+        return self.db[self.collection].find({'_id': obj}, {'_id': 1}).count() > 0
+
     def __getitem__(self, obj):
-        if self.db is not None:
-            return self.db[self.collection].find_one({'_id': obj})
-        else:
-            return self._parents[obj]
+        return self.db[self.collection].find_one({'_id': obj})
 
     def __setitem__(self, obj, parent):
-        if self.db is not None:
-            obj_el = self.db[self.collection].find_one({'_id': obj})
-            if obj_el is None:  # there was not an entry with _id equal to key in the dict!
-                # ignore the parent !
-                obj_el = {'_id': obj, 'parent': obj, 'weight': 1}
-            else:  # there is already an entry with _id equal to key!
-                parent_el = self.db[self.collection].find_one({'_id': parent})
-                obj_el['parent'] = parent_el['_id']
-            self.db[self.collection].save(obj_el)                
-        else:
-            if obj not in self._parents:
-                self._parents[obj] = {'parent': parent, 'weight': 1}
-            else:
-                self._parents[obj]['parent'] = parent
+        obj_el = self.db[self.collection].find_one({'_id': obj})
+        if obj_el is None:  # there was not an entry with _id equal to key in the dict!
+            # ignore the parent !
+            obj_el = {'_id': obj, 'parent': obj, 'weight': 1}
+        else:  # there is already an entry with _id equal to key!
+            parent_el = self.db[self.collection].find_one({'_id': parent})
+            obj_el['parent'] = parent_el['_id']
+        self.db[self.collection].save(obj_el)
 
     def inc_weight(self, obj, weight):
-        if self.db is not None:
-            obj_el = self.db[self.collection].find_one({'_id': obj})
-            obj_el['weight'] += weight
-            self.db[self.collection].save(obj_el)
-        else:
-            self._parents[obj]['weight'] += weight
+        obj_el = self.db[self.collection].find_one({'_id': obj})
+        obj_el['weight'] += weight
+        self.db[self.collection].save(obj_el)
 
     def items(self):
-        if self.db is not None:
-            res = {el.pop('_id'): el for el in self.db[self.collection].find()}
-        else:
-            res = self._parents
+        res = {el.pop('_id'): el for el in self.db[self.collection].find()}
         for el in res.items():
             yield el
+
+
+class DictParents(Parents):
+    """
+    Handle disjoint sets, using built-in python dictionaries
+    """
+    def __init__(self):
+        self._parents = {}
+
+    def __contains__(self, obj):
+        return obj in self._parents
+
+    def __getitem__(self, obj):
+        return self._parents[obj]
+
+    def __setitem__(self, obj, parent):
+        if obj not in self._parents:
+            self._parents[obj] = {'parent': parent, 'weight': 1}
+        else:
+            self._parents[obj]['parent'] = parent
+
+    def inc_weight(self, obj, weight):
+        self._parents[obj]['weight'] += weight
+
+    def items(self):
+        for el in self._parents.items():
+            yield el
+
 
 class UnionFind:
     """Union-find data structure.
@@ -97,7 +140,10 @@ class UnionFind:
     """
     def __init__(self, db=None, collection=None):
         """Create a new empty union-find structure."""
-        self.parents = Parents(db, collection)
+        if db is None:
+            self.parents = DictParents()
+        else:
+            self.parents = MongoParents(db, collection)
 
     def __getitem__(self, obj):
         """Find and return the name of the set containing the object."""
