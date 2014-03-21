@@ -3,5 +3,6 @@ unionfind
 
 Implement the Union-Find (aka disjoint-sets) data structure.
 
-The has an option to handle persistence via mongodb in a transparent way.
+Persistence is supported via MongoDB or MySQL.
+
 
