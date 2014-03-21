@@ -1,18 +1,20 @@
 from UnionFind import UnionFind
 from pymongo import MongoClient
-from pprint import pprint
+import MySQLdb
 
 dbhost = 'localhost'
 testdbname = 'test_unionfind'
 
-client = MongoClient(dbhost)
-db = client[testdbname]
-collection = 'unionfind'
+mongo_client = MongoClient(dbhost)
+mongo_db = mongo_client[testdbname]
+mongo_collection = 'unionfind'
 
+mysql_table = 'unionfind'
+mysql_db = MySQLdb.connect(dbhost, 'test', '', testdbname)
 
 class TestUnionFind:
-    def __init__(self, _db=None, _collection=None):
-        self.uf = UnionFind(_db, _collection)
+    def __init__(self, _db=None, _collection=None, _storage='mongodb'):
+        self.uf = UnionFind(_db, _collection, _storage)
         assert self.uf is not None
 
     def test_insertion(self):
@@ -67,12 +69,12 @@ class TestUnionFind:
         it_dict.clear()
 
     def test_consolidate(self):
-        db.drop_collection(collection)
-        self.uf.consolidate(db, collection)
+        mongo_db.drop_collection(mongo_collection)
+        self.uf.consolidate(mongo_db, mongo_collection)
         # instantiate a new unionfind instance that uses db stuff
-        uf2 = UnionFind(db, collection)
+        uf2 = UnionFind(mongo_db, mongo_collection)
 
-        for el in db[collection].find():
+        for el in mongo_db[mongo_collection].find():
             # check if everything has been correctly stored into the db
             assert el['_id'] in self.uf.parents
             assert el['parent'] == self.uf.parents[el['_id']]['parent']
@@ -94,22 +96,36 @@ def test_unionfind():
 
 
 def test_unionfind_mongodb():
-    client.drop_database(db)
+    mongo_client.drop_database(mongo_db)
 
-    tuf = TestUnionFind(db, collection)
+    tuf = TestUnionFind(mongo_db, mongo_collection)
     tuf.test_insertion()
     tuf.test_union()
 
-    client.drop_database(db)
+    mongo_client.drop_database(mongo_db)
 
+
+def test_unionfind_mysql():
+    with mysql_db:
+        cur = mysql_db.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute('DROP TABLE IF EXISTS %s' % mysql_table)
+        cur.execute('CREATE TABLE %s (_id varchar(100) NOT NULL PRIMARY KEY,'
+                    'parent varchar(100), weight int)' % mysql_table)
+
+    tuf = TestUnionFind(mysql_db, mysql_table, 'mysql')
+    tuf.test_insertion()
+    tuf.test_union()
+
+    with mysql_db:
+        cur = mysql_db.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute('DROP TABLE IF EXISTS %s' % mysql_table)
 
 def test_unionfind_consolidate():
-    client.drop_database(db)
+    mongo_client.drop_database(mongo_db)
 
     tuf = TestUnionFind()
     tuf.test_insertion()
     tuf.test_union()
     tuf.test_consolidate()
 
-    client.drop_database(db)
-
+    mongo_client.drop_database(mongo_db)

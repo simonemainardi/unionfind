@@ -10,7 +10,9 @@ with significant additional changes by D. Eppstein.
 """
 import abc
 import pymongo
+import MySQLdb
 
+available_storage = ['mongodb', 'mysql']
 
 class Parents(object):
     """
@@ -44,6 +46,63 @@ class Parents(object):
     def items(self):
         """ Return the objects in the disjoint sets as a list of 2-tuples (object, parent_object) """
         return
+
+
+class MySQLParents(Parents):
+    """
+    Handle disjoint sets, via mysql.
+    """
+    def __init__(self, db, table=None):
+        """
+        Parameters:
+        -----------
+        :param db: an instance of MySQLdb.connections.Connection or None
+        :param table: a string representing the table in the db or None
+        """
+        if not isinstance(db, MySQLdb.connections.Connection):
+            raise TypeError('db must be a valid instance of MySQLdb.connections.Connection')
+
+        self.db = db
+        self.cur = db.cursor(MySQLdb.cursors.DictCursor)
+        self.table = table
+
+    def __contains__(self, obj):
+        self.cur.execute('SELECT * from %s WHERE _id = "%s"' % (self.table, obj))
+        return self.cur.rowcount > 0
+
+    def __getitem__(self, obj):
+        self.cur.execute('SELECT * from %s WHERE _id = "%s"' % (self.table, obj))
+        return self.cur.fetchone()
+
+    def __setitem__(self, obj, parent):
+        self.cur.execute('SELECT * from %s WHERE _id = "%s"' % (self.table, obj))
+        obj_el = self.cur.fetchone()
+        if obj_el is None:  # there wasn't any row with column _id equal to key in the database!
+            # ignore the parent !
+            obj_el = {'_id': obj, 'parent': obj, 'weight': 1}
+        else:  # there is already an entry with _id equal to key!
+            self.cur.execute('SELECT * from %s WHERE _id = "%s"' % (self.table, parent))
+            parent_el = self.cur.fetchone()
+            obj_el['parent'] = parent_el['_id']
+        with self.db:
+            # simulate an UPSERT
+            obj_el['table'] = self.table
+            self.cur.execute('INSERT INTO {table} VALUES ("{_id}", "{parent}", {weight}) '
+                             'ON DUPLICATE KEY UPDATE parent = "{parent}"'.format(**obj_el))
+
+    def inc_weight(self, obj, weight):
+        self.cur.execute('SELECT * from %s WHERE _id = "%s"' % (self.table, obj))
+        obj_el = self.cur.fetchone()
+        obj_el['weight'] += weight
+        with self.db:
+            self.cur.execute('UPDATE %s set weight = %i WHERE _id = "%s"' %
+                             (self.table, obj_el['weight'], obj_el['_id']))
+
+    def items(self):
+        self.cur.execute('SELECT * from %s' % self.table)
+        res = {el.pop('_id'): el for el in self.cur.fetchall()}
+        for el in res.items():
+            yield el
 
 
 class MongoParents(Parents):
@@ -138,12 +197,15 @@ class UnionFind:
       in X, it is added to X as one of the members of the merged set.
 
     """
-    def __init__(self, db=None, collection=None):
+    def __init__(self, db=None, collection=None, storage='mongodb'):
         """Create a new empty union-find structure."""
-        if db is None:
+        if db is None or collection is None or storage not in available_storage:
             self.parents = DictParents()
-        else:
+        elif storage == 'mongodb':
             self.parents = MongoParents(db, collection)
+        else:  # storage == 'mysql':
+            self.parents = MySQLParents(db, collection)
+
 
     def __getitem__(self, obj):
         """Find and return the name of the set containing the object."""
