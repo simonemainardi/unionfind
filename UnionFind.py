@@ -238,14 +238,17 @@ class MySQLConsolidate(Consolidate):
         with self.db:
             self.cur.execute('DROP TABLE IF EXISTS %s' % self.table)
             self.cur.execute('CREATE TABLE %s (_id varchar(100) NOT NULL PRIMARY KEY,'
-                             ' parent varchar(100), weight int)' % self.table)
+                             ' parent varchar(100), weight int)'
+                             'DEFAULT CHARACTER SET utf8 COLLATE utf8_bin'  # important to allow unicode comparisons
+                             % self.table)
 
             for k in dict_to_consolidate:
-                self.cur.execute('INSERT INTO %s VALUES ("%s", "%s", %i)' %
+                self.cur.execute("INSERT INTO %s VALUES ('%s', '%s', %i)" %
                                  (self.table,
                                   k,
                                   dict_to_consolidate[k]['parent'],
                                   dict_to_consolidate[k]['weight']))
+
         return dict_to_consolidate.keys()
 
 
