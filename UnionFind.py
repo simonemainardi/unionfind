@@ -182,18 +182,17 @@ class DictParents(Parents):
 
     def consolidate(self, db, collection):
         if isinstance(db, pymongo.database.Database):
-            cons = MongoConsolidate(db, collection)
+            MongoConsolidate(db, collection).consolidate(self._parents)
         elif isinstance(db, MySQLdb.connections.Connection):
-            cons = MySQLConsolidate(db, collection)
+            MySQLConsolidate(db, collection).consolidate(self._parents)
         else:
             raise TypeError('db must be an instance of pymongo.database.Database or MySQLdb.connections.Connection')
-        cons.consolidate(self._parents)
 
 
 class Consolidate(object):
     """
     Abstract class that provides methods to consolidate in-memory python dictionaries
-    to databases
+    to databases. Sub-classes must implement per-database consolidation methods
     """
     __metaclass__ = abc.ABCMeta
 
@@ -209,6 +208,14 @@ class Consolidate(object):
 
 class MongoConsolidate(Consolidate):
     def __init__(self, db, collection):
+        """
+        Consolidate in-memory disjoint sets in a mongodb collection
+
+        Parameters
+        -----------
+        :param db: Instance of pymongo.database.Database. Results will be stored here.
+        :param collection: String specifying the collection where to store the results. Collection is emptied if it already exists.
+        """
         if not isinstance(db, pymongo.database.Database):
             raise TypeError('db must be a valid instance of pymongo.database.Database')
         self.collection = collection
@@ -228,7 +235,18 @@ class MySQLConsolidate(Consolidate):
         super(MySQLConsolidate, self).__init__(db)
 
     def consolidate(self, dict_to_consolidate):
-        pass
+        with self.db:
+            self.cur.execute('DROP TABLE IF EXISTS %s' % self.table)
+            self.cur.execute('CREATE TABLE %s (_id varchar(100) NOT NULL PRIMARY KEY,'
+                             ' parent varchar(100), weight int)' % self.table)
+
+            for k in dict_to_consolidate:
+                self.cur.execute('INSERT INTO %s VALUES ("%s", "%s", %i)' %
+                                 (self.table,
+                                  k,
+                                  dict_to_consolidate[k]['parent'],
+                                  dict_to_consolidate[k]['weight']))
+        return dict_to_consolidate.keys()
 
 
 class UnionFind:
@@ -288,16 +306,7 @@ class UnionFind:
                 self.parents[r] = heaviest
 
     def consolidate(self, db, collection):
-        """
-        Consolidate in-memory disjoint sets in a mongodb collection
-
-        Parameters
-        -----------
-        :param db: Instance of pymongo.database.Database. Results will be stored here.
-        :param collection: String specifying the collection where to store the results. Collection is emptied if it already exists.
-        """
-        db.drop_collection(collection)
-        return db[collection].insert([dict(v, **{"_id": k}) for k, v in self.parents.items()])
+        return self.parents.consolidate(db, collection)
 
     def items(self):
         """

@@ -88,6 +88,47 @@ class TestUnionFind:
             # and the same weight?
             assert self.uf.parents[el['_id']]['weight'] == uf2.parents[el['_id']]['weight']
 
+    def test_consolidate_mongodb(self):
+        mongo_db.drop_collection(mongo_collection)
+        self.uf.consolidate(mongo_db, mongo_collection)
+        # instantiate a new unionfind instance that uses db stuff
+        uf2 = UnionFind(mongo_db, mongo_collection)
+
+        for el in mongo_db[mongo_collection].find():
+            # check if everything has been correctly stored into the db
+            assert el['_id'] in self.uf.parents
+            assert el['parent'] == self.uf.parents[el['_id']]['parent']
+            assert el['weight'] == self.uf.parents[el['_id']]['weight']
+
+            # check if the new unionfind structure, initialized from
+            # the db contents, actually contains the same elements
+            assert el['_id'] in uf2.parents
+            # does this guy have the same root?
+            assert self.uf[el['_id']] == uf2[el['_id']]
+            # and the same weight?
+            assert self.uf.parents[el['_id']]['weight'] == uf2.parents[el['_id']]['weight']
+
+    def test_consolidate_mysql(self):
+        self.uf.consolidate(mysql_db, mysql_table)
+        # instantiate a new unionfind instance that uses db stuff
+        uf2 = UnionFind(mysql_db, mysql_table, 'mysql')
+
+        cur = mysql_db.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute('SELECT * FROM %s' % mysql_table)
+        for el in cur.fetchall():
+            # check if everything has been correctly stored into the db
+            assert el['_id'] in self.uf.parents
+            assert el['parent'] == self.uf.parents[el['_id']]['parent']
+            assert el['weight'] == self.uf.parents[el['_id']]['weight']
+
+            # check if the new unionfind structure, initialized from
+            # the db contents, actually contains the same elements
+            assert el['_id'] in uf2.parents
+            # does this guy have the same root?
+            assert self.uf[el['_id']] == uf2[el['_id']]
+            # and the same weight?
+            assert self.uf.parents[el['_id']]['weight'] == uf2.parents[el['_id']]['weight']
+
 
 def test_unionfind():
     tuf = TestUnionFind()
@@ -120,12 +161,22 @@ def test_unionfind_mysql():
         cur = mysql_db.cursor(MySQLdb.cursors.DictCursor)
         cur.execute('DROP TABLE IF EXISTS %s' % mysql_table)
 
-def test_unionfind_consolidate():
+def test_unionfind_consolidate_mongodb():
     mongo_client.drop_database(mongo_db)
 
     tuf = TestUnionFind()
     tuf.test_insertion()
     tuf.test_union()
-    tuf.test_consolidate()
+    tuf.test_consolidate_mongodb()
 
     mongo_client.drop_database(mongo_db)
+
+def test_unionfind_consolidate_mysql():
+    with mysql_db:
+        cur = mysql_db.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute('DROP TABLE IF EXISTS %s' % mysql_table)
+
+    tuf = TestUnionFind()
+    tuf.test_insertion()
+    tuf.test_union()
+    tuf.test_consolidate_mysql()
