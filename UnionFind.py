@@ -11,6 +11,8 @@ with significant additional changes by D. Eppstein.
 import abc
 import pymongo
 import MySQLdb
+from warnings import filterwarnings
+filterwarnings('ignore', category=MySQLdb.Warning)
 
 available_storage = ['mongodb', 'mysql']
 
@@ -235,19 +237,30 @@ class MySQLConsolidate(Consolidate):
         super(MySQLConsolidate, self).__init__(db)
 
     def consolidate(self, dict_to_consolidate):
+        values = []
+        # unfold the dictionary
+        for k, v in dict_to_consolidate.items():  # this will speed-up database insertions
+            values.append((k, v['parent'], v['weight']))
+
         with self.db:
             self.cur.execute('DROP TABLE IF EXISTS %s' % self.table)
             self.cur.execute('CREATE TABLE %s (_id varchar(100) NOT NULL PRIMARY KEY,'
                              ' parent varchar(100), weight int)'
                              'DEFAULT CHARACTER SET utf8 COLLATE utf8_bin'  # important to allow unicode comparisons
                              % self.table)
+            query = "INSERT INTO `%s` " % self.table
+            query += "VALUES (%s, %s, %s)"
+            self.cur.executemany(query, values)
 
-            for k in dict_to_consolidate:
+            """
+            for i, k in enumerate(dict_to_consolidate):
+                print i
                 self.cur.execute("INSERT INTO %s VALUES ('%s', '%s', %i)" %
                                  (self.table,
                                   k,
                                   dict_to_consolidate[k]['parent'],
                                   dict_to_consolidate[k]['weight']))
+            """
 
         return dict_to_consolidate.keys()
 
