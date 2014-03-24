@@ -14,6 +14,7 @@ import MySQLdb
 
 available_storage = ['mongodb', 'mysql']
 
+
 class Parents(object):
     """
     Abstract class to define the interface of disjoint sets objects
@@ -178,6 +179,56 @@ class DictParents(Parents):
     def items(self):
         for el in self._parents.items():
             yield el
+
+    def consolidate(self, db, collection):
+        if isinstance(db, pymongo.database.Database):
+            cons = MongoConsolidate(db, collection)
+        elif isinstance(db, MySQLdb.connections.Connection):
+            cons = MySQLConsolidate(db, collection)
+        else:
+            raise TypeError('db must be an instance of pymongo.database.Database or MySQLdb.connections.Connection')
+        cons.consolidate(self._parents)
+
+
+class Consolidate(object):
+    """
+    Abstract class that provides methods to consolidate in-memory python dictionaries
+    to databases
+    """
+    __metaclass__ = abc.ABCMeta
+
+    def __init__(self, db):
+        """ Initialize the class with an instance of db and the collection where to write to """
+        self.db = db
+
+    @abc.abstractmethod
+    def consolidate(self, dict_to_consolidate):
+        """ Write the contents of the argument in a database table/collection """
+        return
+
+
+class MongoConsolidate(Consolidate):
+    def __init__(self, db, collection):
+        if not isinstance(db, pymongo.database.Database):
+            raise TypeError('db must be a valid instance of pymongo.database.Database')
+        self.collection = collection
+        super(MongoConsolidate, self).__init__(db)
+
+    def consolidate(self, dict_to_consolidate):
+        self.db.drop_collection(self.collection)
+        return self.db[self.collection].insert([dict(v, **{"_id": k}) for k, v in dict_to_consolidate.items()])
+
+
+class MySQLConsolidate(Consolidate):
+    def __init__(self, db, table):
+        if not isinstance(db, MySQLdb.connections.Connection):
+            raise TypeError('db must be a valid instance of MySQLdb.connections.Connection')
+        self.cur = db.cursor(MySQLdb.cursors.DictCursor)
+        self.table = table
+        super(MySQLConsolidate, self).__init__(db)
+
+    def consolidate(self, dict_to_consolidate):
+        pass
 
 
 class UnionFind:
