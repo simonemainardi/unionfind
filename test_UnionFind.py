@@ -151,7 +151,8 @@ def test_unionfind_mysql():
         cur = mysql_db.cursor(MySQLdb.cursors.DictCursor)
         cur.execute('DROP TABLE IF EXISTS %s' % mysql_table)
         cur.execute('CREATE TABLE %s (_id varchar(100) NOT NULL PRIMARY KEY,'
-                    'parent varchar(100), weight int)' % mysql_table)
+                    'parent varchar(100), weight int)'
+                    'DEFAULT CHARACTER SET utf8 COLLATE utf8_bin' % mysql_table)
 
     tuf = TestUnionFind(mysql_db, mysql_table, 'mysql')
     tuf.test_insertion()
