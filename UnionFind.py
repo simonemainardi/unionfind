@@ -70,39 +70,45 @@ class MySQLParents(Parents):
         self.table = table
 
     def __contains__(self, obj):
-        self.cur.execute('SELECT * from %s WHERE _id = "%s"' % (self.table, obj))
+        query = " SELECT * FROM %s " % self.table
+        query += " WHERE _id = %s "  # this time we let mysql replace the %s
+        self.cur.execute(query, (obj,))
         return self.cur.rowcount > 0
 
     def __getitem__(self, obj):
-        self.cur.execute('SELECT * from %s WHERE _id = "%s"' % (self.table, obj))
+        query = " SELECT * FROM %s " % self.table
+        query += " WHERE _id = %s "  # this time we let mysql replace the %s
+        self.cur.execute(query, (obj,))
         return self.cur.fetchone()
 
     def __setitem__(self, obj, parent):
-        self.cur.execute('SELECT * from %s WHERE _id = "%s"' % (self.table, obj))
+        query = " SELECT * FROM %s " % self.table
+        query += " WHERE _id = %s "  # this time we let mysql replace the %s
+        self.cur.execute(query, (obj,))
         obj_el = self.cur.fetchone()
         if obj_el is None:  # there wasn't any row with column _id equal to key in the database!
             # ignore the parent !
             obj_el = {'_id': obj, 'parent': obj, 'weight': 1}
         else:  # there is already an entry with _id equal to key!
-            self.cur.execute('SELECT * from %s WHERE _id = "%s"' % (self.table, parent))
+            query = " SELECT * FROM %s " % self.table
+            query += " WHERE _id = %s "  # this time we let mysql replace the %s
+            self.cur.execute(query, (parent,))
             parent_el = self.cur.fetchone()
             obj_el['parent'] = parent_el['_id']
         with self.db:
             # simulate an UPSERT
-            obj_el['table'] = self.table
-            self.cur.execute('INSERT INTO {table} VALUES ("{_id}", "{parent}", {weight}) '
-                             'ON DUPLICATE KEY UPDATE parent = "{parent}"'.format(**obj_el))
+            query = " INSERT INTO %s " % self.table
+            query += " VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE parent = %s"
+            self.cur.execute(query, (obj_el['_id'], obj_el['parent'], obj_el['weight'], obj_el['parent']))
 
     def inc_weight(self, obj, weight):
-        self.cur.execute('SELECT * from %s WHERE _id = "%s"' % (self.table, obj))
-        obj_el = self.cur.fetchone()
-        obj_el['weight'] += weight
+        query = " UPDATE %s " % self.table
+        query += "SET weight = weight + %s WHERE _id = %s"
         with self.db:
-            self.cur.execute('UPDATE %s set weight = %i WHERE _id = "%s"' %
-                             (self.table, obj_el['weight'], obj_el['_id']))
+            self.cur.execute(query, (weight, obj))
 
     def items(self):
-        self.cur.execute('SELECT * from %s' % self.table)
+        self.cur.execute(" SELECT * from %s " % self.table)
         res = {el.pop('_id'): el for el in self.cur.fetchall()}
         for el in res.items():
             yield el
@@ -246,21 +252,11 @@ class MySQLConsolidate(Consolidate):
             self.cur.execute('DROP TABLE IF EXISTS %s' % self.table)
             self.cur.execute('CREATE TABLE %s (_id varchar(100) NOT NULL PRIMARY KEY,'
                              ' parent varchar(100), weight int)'
-                             'DEFAULT CHARACTER SET utf8 COLLATE utf8_bin'  # important to allow unicode comparisons
+                             'DEFAULT CHARACTER SET utf8 COLLATE utf8_bin'  # necessary to allow unicode comparisons
                              % self.table)
             query = "INSERT INTO `%s` " % self.table
             query += "VALUES (%s, %s, %s)"
             self.cur.executemany(query, values)
-
-            """
-            for i, k in enumerate(dict_to_consolidate):
-                print i
-                self.cur.execute("INSERT INTO %s VALUES ('%s', '%s', %i)" %
-                                 (self.table,
-                                  k,
-                                  dict_to_consolidate[k]['parent'],
-                                  dict_to_consolidate[k]['weight']))
-            """
 
         return dict_to_consolidate.keys()
 
