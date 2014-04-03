@@ -61,12 +61,37 @@ class TestUnionFind:
         assert self.uf['mike'] == self.uf['albert']
         self.uf.parents['albert']['weight'] == self.uf.parents['mike']['weight'] + 2 == 4
 
+        # now we shoud have only one set
         it_dict = {k: v for k, v in self.uf.items()}
         assert 'john' in it_dict and it_dict['john'] == 'nathan'
         assert 'albert' in it_dict and it_dict['albert'] == 'nathan'
         assert 'nathan' in it_dict and it_dict['nathan'] == 'nathan'
         assert 'mike' in it_dict and it_dict['mike'] == 'nathan'
         it_dict.clear()
+
+    def test_deunion(self):
+        self.uf.deunion('nathan')
+        assert self.uf['nathan'] == self.uf['nathan']  # nathan was the parent of the set
+        assert self.uf['john'] != self.uf['nathan']
+        assert self.uf['mike'] != self.uf['nathan']
+        assert self.uf['albert'] != self.uf['nathan']
+        assert self.uf['john'] == self.uf['mike'] == self.uf['albert']  # those guys are still in the same set
+
+        # add nathan again
+        self.uf.union('nathan', 'mike')
+        # and try a deunion with multiple items
+        self.uf.deunion('albert', 'john')
+        assert self.uf['albert'] == self.uf['albert']
+        assert self.uf['john'] == self.uf['john']
+        assert self.uf['mike'] == self.uf['nathan'] != self.uf['albert'] != self.uf['john']
+
+        # de union everyone
+        self.uf.deunion('albert', 'john', 'mike', 'nathan')
+        assert self.uf['mike'] == self.uf['mike']
+        assert self.uf['john'] == self.uf['john']
+        assert self.uf['nathan'] == self.uf['nathan']
+        assert self.uf['albert'] == self.uf['albert']
+
 
     def test_consolidate(self):
         mongo_db.drop_collection(mongo_collection)
@@ -134,6 +159,7 @@ def test_unionfind():
     tuf = TestUnionFind()
     tuf.test_insertion()
     tuf.test_union()
+    tuf.test_deunion()
 
 
 def test_unionfind_mongodb():
@@ -142,6 +168,7 @@ def test_unionfind_mongodb():
     tuf = TestUnionFind(mongo_db, mongo_collection)
     tuf.test_insertion()
     tuf.test_union()
+    tuf.test_deunion()
 
     mongo_client.drop_database(mongo_db)
 
@@ -157,6 +184,7 @@ def test_unionfind_mysql():
     tuf = TestUnionFind(mysql_db, mysql_table, 'mysql')
     tuf.test_insertion()
     tuf.test_union()
+    tuf.test_deunion()
 
     with mysql_db:
         cur = mysql_db.cursor(MySQLdb.cursors.DictCursor)
@@ -168,6 +196,7 @@ def test_unionfind_consolidate_mongodb():
     tuf = TestUnionFind()
     tuf.test_insertion()
     tuf.test_union()
+    tuf.test_deunion()
     tuf.test_consolidate_mongodb()
 
     mongo_client.drop_database(mongo_db)
@@ -180,4 +209,5 @@ def test_unionfind_consolidate_mysql():
     tuf = TestUnionFind()
     tuf.test_insertion()
     tuf.test_union()
+    tuf.test_deunion()
     tuf.test_consolidate_mysql()

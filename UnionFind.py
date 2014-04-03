@@ -317,12 +317,27 @@ class UnionFind:
                 self.parents.inc_weight(heaviest, self.parents[r]['weight'])
                 self.parents[r] = heaviest
 
+    def deunion(self, *objects):
+        """Remove each object from the set it currently belongs to and put it into a singleton"""
+        # to avoid breaking currently existing paths, we must be sure all paths are compressed
+        # indeed, self.items() actually compress paths before returning items
+        items = [item for item in self.items()]
+        for obj in objects:
+            # pick only the guys that have obj as their parent, i.e.:
+            # -- all the guys in set containing obj, or,
+            # -- none if obj have been elected as the parent of the set that contains it
+            cur_set = [item[0] for item in items if item[1] == obj and item[0] != obj]
+            for el in cur_set:
+                self.parents[el] = cur_set[0]  # el[0] arbitrarily becomes the new set representative, i.e. the parent
+            self.parents[obj] = obj  # and obj ends up in a singleton containing itself, only.
+
+
     def consolidate(self, db, collection):
         return self.parents.consolidate(db, collection)
 
     def items(self):
         """
-        Return 2-tuples containing element and root of the set containing it
+        Return 2-tuples containing element and root of the set containing it, compressing each existing path.
         """
         for item in self.parents.items():
             yield (item[0], self[item[0]])
