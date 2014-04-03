@@ -8,7 +8,7 @@ Persistence is optionally supported via MongoDB or MySQL.
 ### Standard usage with built-in python dictionaries
 ```
 >>> from UnionFind import UnionFind
->>> family = UnionFind('mom', 'pop', 'son')
+>>> family = UnionFind()
 >>> family.union('mom','pop')
 >>> print family['mom'], family['pop']
 pop pop
