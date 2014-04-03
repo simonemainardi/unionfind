@@ -9,8 +9,13 @@ with significant additional changes by D. Eppstein.
 
 """
 import abc
-import pymongo
-import MySQLdb
+try:
+    import pymongo
+    import MySQLdb
+except ImportError:
+    # we can still use union-find with standard python dictionaries
+    pass
+
 from warnings import filterwarnings
 filterwarnings('ignore', category=MySQLdb.Warning)
 
