@@ -12,12 +12,11 @@ import abc
 try:
     import pymongo
     import MySQLdb
+    from warnings import filterwarnings
+    filterwarnings('ignore', category=MySQLdb.Warning)
 except ImportError:
     # we can still use union-find with standard python dictionaries
     pass
-
-from warnings import filterwarnings
-filterwarnings('ignore', category=MySQLdb.Warning)
 
 available_storage = ['mongodb', 'mysql']
 
