@@ -29,29 +29,29 @@ class Parents(object):
 
     @abc.abstractmethod
     def __contains__(self, obj):
-        """ Return true if the object obj is present in the disjoint sets. """
+        """ Return true if the object `obj` is present in the disjoint sets. """
         return
 
     @abc.abstractmethod
     def __getitem__(self, obj):
-        """ Return the object obj if it is present in the disjoint sets. """
+        """ Return the object `obj` if it is present in the disjoint sets. """
         return
 
     @abc.abstractmethod
     def __setitem__(self, obj, parent):
-        """ Add the object obj to the disjoint sets with weight 1 if not present.
-        Then, update the parent member of the object obj with the argument parent.
+        """ Add the object `obj` to the disjoint sets with weight 1 if not present.
+        Then, update the parent member of the object `obj` with the argument `parent`.
         """
         return
 
     @abc.abstractmethod
     def inc_weight(self, obj, weight):
-        """ Increment the weight of the object obj by the value of the argument weight. """
+        """ Increment the weight of the object `obj` by the value of the argument `weight`. """
         return
 
     @abc.abstractmethod
     def items(self):
-        """ Return the objects in the disjoint sets as a list of 2-tuples (object, parent_object) """
+        """ Return the objects in the disjoint sets as a list of 2-tuples `(object, parent_object)` """
         return
 
 
