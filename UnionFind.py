@@ -55,7 +55,6 @@ class Parents(object):
         """ Return the objects in the disjoint sets as a list of 2-tuples `(object, parent_object)` """
         return
 
-
 class MySQLParents(Parents):
     """
     Handle disjoint sets, via mysql.
@@ -118,6 +117,18 @@ class MySQLParents(Parents):
         for el in res.items():
             yield el
 
+    def iter_children(self):
+        query = " SELECT parent FROM %s " % self.table
+        query += "GROUP BY parent ORDER BY count(*) DESC"
+        with self.db:
+            self.cur.execute(query)
+            for parent in self.cur.fetchall():
+                parent = parent['parent']
+                query2 = " SELECT _id FROM %s " % self.table
+                query2 += " WHERE parent = %s "
+                self.cur.execute(query2, (parent,))
+                yield list([m['_id'] for m in self.cur.fetchall()])
+
 
 class MongoParents(Parents):
     """
@@ -166,6 +177,9 @@ class MongoParents(Parents):
         for el in res.items():
             yield el
 
+    def iter_children(self):
+        raise NotImplementedError('TODO')
+
 
 class DictParents(Parents):
     """
@@ -192,6 +206,9 @@ class DictParents(Parents):
     def items(self):
         for el in self._parents.items():
             yield el
+
+    def iter_children(self):
+        raise NotImplementedError('TODO')
 
     def consolidate(self, db, collection):
         if isinstance(db, pymongo.database.Database):
@@ -336,7 +353,6 @@ class UnionFind:
                 self.parents[el] = cur_set[0]  # el[0] arbitrarily becomes the new set representative, i.e. the parent
             self.parents[obj] = obj  # and obj ends up in a singleton containing itself, only.
 
-
     def consolidate(self, db, collection):
         return self.parents.consolidate(db, collection)
 
@@ -346,3 +362,10 @@ class UnionFind:
         """
         for item in self.parents.items():
             yield (item[0], self[item[0]])
+
+    def iter_sets(self):
+        """
+        Returns all the disjoints sets. Each set is returned as a list.
+        """
+        self.items()  # compress all the paths so that it's guaranteed that sets are complete
+        return self.parents.iter_children()

@@ -92,6 +92,22 @@ class TestUnionFind:
         assert self.uf['nathan'] == self.uf['nathan']
         assert self.uf['albert'] == self.uf['albert']
 
+    def test_iter_sets(self):
+        self.uf.deunion('albert', 'john', 'mike', 'nathan')
+        roots = ['albert', 'john', 'mike', 'nathan']
+        res = []
+        for el in self.uf.iter_sets():
+            assert len(el) == 1
+            res.append(el[0])
+        assert(sorted(roots) == sorted(res))
+        self.uf.union('albert', 'john', 'mike')
+        for el in self.uf.iter_sets():
+            assert len(el) == 1 or len(el) == 3
+            if len(el) == 3:
+                assert set(['albert', 'john', 'mike']) == set(el)
+            else:
+                assert set(['nathan']) == set(el)
+
 
     def test_consolidate(self):
         mongo_db.drop_collection(mongo_collection)
@@ -185,6 +201,7 @@ def test_unionfind_mysql():
     tuf.test_insertion()
     tuf.test_union()
     tuf.test_deunion()
+    tuf.test_iter_sets()
 
     with mysql_db:
         cur = mysql_db.cursor(MySQLdb.cursors.DictCursor)
