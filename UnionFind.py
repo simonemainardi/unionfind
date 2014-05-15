@@ -58,7 +58,7 @@ class MySQLParents(Parents):
     """
     Handle disjoint sets, via mysql.
     """
-    def __init__(self, db, table=None):
+    def __init__(self, db, table=None, **extra_fields):
         """
         Parameters:
         -----------
@@ -71,60 +71,104 @@ class MySQLParents(Parents):
         self.db = db
         self.cur = db.cursor(MySQLdb.cursors.DictCursor)
         self.table = table
+        self.extra_fields = extra_fields
+
+    def _sql_where(self, obj=False):
+        if not self.extra_fields and not obj:
+            return ''  # no conditions can be set
+        query = ' WHERE '
+        extra_fields = []
+        for f_name, f_val in self.extra_fields.iteritems():  # possibly match extra fields
+            extra_fields.append(" %s = '%s' " % (f_name, f_val))
+        query += ' AND '.join(extra_fields)
+        if extra_fields and obj:  # we need one extra AND at the end of extra fields
+            query += ' AND '
+        if obj:
+            query += " _id = %s "  # this time we let mysql replace the %s
+        return query
+
+    @property
+    def _sql_find_all(self):
+        """
+        Selects the items in the database, possibly including extra fields
+        """
+        query = " SELECT * FROM %s " % self.table
+        if not self.extra_fields:  # no need to filter using a where clause
+            return query
+        else:
+            return query + self._sql_where(obj=False)
+
+    @property
+    def _sql_find_obj(self):
+        query = " SELECT * FROM %s " % self.table
+        return query + self._sql_where(obj=True)
+
+    @property
+    def _sql_insert_obj(self):
+        """
+        Adds optional extra_fields and inserts the object into the database
+        """
+        query = " INSERT INTO %s " % self.table
+        query += 'SET '
+        for f_name, f_val in self.extra_fields.iteritems():
+            query += " %s = '%s', " % (f_name, f_val)
+        query += "_id = %s, parent = %s, weight = %s"  # _id, parent and weight
+        query += " ON DUPLICATE KEY UPDATE parent = %s"  # simulate an UPSERT
+        return query
 
     def __contains__(self, obj):
-        query = " SELECT * FROM %s " % self.table
-        query += " WHERE _id = %s "  # this time we let mysql replace the %s
+        query = self._sql_find_obj
         self.cur.execute(query, (obj,))
         return self.cur.rowcount > 0
 
     def __getitem__(self, obj):
-        query = " SELECT * FROM %s " % self.table
-        query += " WHERE _id = %s "  # this time we let mysql replace the %s
+        query = self._sql_find_obj
         self.cur.execute(query, (obj,))
         return self.cur.fetchone()
 
     def __setitem__(self, obj, parent):
-        query = " SELECT * FROM %s " % self.table
-        query += " WHERE _id = %s "  # this time we let mysql replace the %s
+        query = self._sql_find_obj
         self.cur.execute(query, (obj,))
         obj_el = self.cur.fetchone()
         if obj_el is None:  # there wasn't any row with column _id equal to key in the database!
             # ignore the parent !
             obj_el = {'_id': obj, 'parent': obj, 'weight': 1}
-        else:  # there is already an entry with _id equal to key!
-            query = " SELECT * FROM %s " % self.table
-            query += " WHERE _id = %s "  # this time we let mysql replace the %s
+        else:  # there is already an entry with _id equal to they key!
             self.cur.execute(query, (parent,))
             parent_el = self.cur.fetchone()
             obj_el['parent'] = parent_el['_id']
         with self.db:
             # simulate an UPSERT
-            query = " INSERT INTO %s " % self.table
-            query += " VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE parent = %s"
+            query = self._sql_insert_obj
             self.cur.execute(query, (obj_el['_id'], obj_el['parent'], obj_el['weight'], obj_el['parent']))
 
     def inc_weight(self, obj, weight):
         query = " UPDATE %s " % self.table
-        query += "SET weight = weight + %s WHERE _id = %s"
+        query += "SET weight = weight + %s "  # WHERE _id = %s"
+        query += self._sql_where(obj=True)
         with self.db:
             self.cur.execute(query, (weight, obj))
 
     def items(self):
-        self.cur.execute(" SELECT * from %s " % self.table)
+        self.cur.execute(self._sql_find_all)
         res = {el.pop('_id'): el for el in self.cur.fetchall()}
         for el in res.items():
             yield el
 
     def iter_children(self):
         query = " SELECT parent FROM %s " % self.table
+        if self.extra_fields:  # possibly include a WHERE clause
+            query += self._sql_where(obj=False)
         query += "GROUP BY parent ORDER BY count(*) DESC"
         with self.db:
             self.cur.execute(query)
             for parent in self.cur.fetchall():
                 parent = parent['parent']
                 query2 = " SELECT _id FROM %s " % self.table
-                query2 += " WHERE parent = %s "
+                if self.extra_fields:
+                    query2 += self._sql_where(obj=False) + ' AND parent = %s'
+                else:
+                    query2 += " WHERE parent = %s "
                 self.cur.execute(query2, (parent,))
                 yield list([m['_id'] for m in self.cur.fetchall()])
 
@@ -209,11 +253,11 @@ class DictParents(Parents):
     def iter_children(self):
         raise NotImplementedError('TODO')
 
-    def consolidate(self, db, collection):
+    def consolidate(self, db, collection, **extra_fields):
         if isinstance(db, pymongo.database.Database):
             MongoConsolidate(db, collection).consolidate(self._parents)
         elif isinstance(db, MySQLdb.connections.Connection):
-            MySQLConsolidate(db, collection).consolidate(self._parents)
+            MySQLConsolidate(db, collection, **extra_fields).consolidate(self._parents)
         else:
             raise TypeError('db must be an instance of pymongo.database.Database or MySQLdb.connections.Connection')
 
@@ -256,12 +300,51 @@ class MongoConsolidate(Consolidate):
 
 
 class MySQLConsolidate(Consolidate):
-    def __init__(self, db, table):
+    def __init__(self, db, table, **extra_fields):
+        """
+        Consolidate disjoint sets to a mysql database.
+
+        Parameters
+        -----------
+        :param db: Instance of MySQLdb.connections.Connection
+        :param table: String specifying the table where to store the results.
+        :param **extra_fields: Extra fields that are added to each row. E.g., 'role_type'='inventor'
+        """
         if not isinstance(db, MySQLdb.connections.Connection):
             raise TypeError('db must be a valid instance of MySQLdb.connections.Connection')
         self.cur = db.cursor(MySQLdb.cursors.DictCursor)
         self.table = table
+        self.extra_fields = extra_fields
         super(MySQLConsolidate, self).__init__(db)
+
+    def _create_table_query(self):
+        """
+        Creates a SQL table standard and extra fields.
+        """
+        extra_fields = tuple(self.extra_fields.keys())  # extra field names
+        # we create one VARCHAR(16) for each extra field specified
+        fields = ' %s VARCHAR(16), ' * len(extra_fields)
+        fields = fields % extra_fields
+        fields += '_id VARCHAR(100), parent VARCHAR(100), weight INT'
+        # primary key is composed of all extra fields plus _id
+        # create the primary key sql code
+        prikey = ' %s, ' * len(extra_fields)
+        prikey = prikey % extra_fields
+        prikey += '_id'
+        query = 'CREATE TABLE IF NOT EXISTS %s ' % self.table
+        query += '(%s, PRIMARY KEY (%s)) ' % (fields, prikey)
+        query += 'DEFAULT CHARACTER SET utf8 COLLATE utf8_bin'  # necessary to allow unicode comparisons
+        return query
+
+    def _clear_old_query(self):
+        """
+        Clear previously existing entries for a given combination of _id and extra_fields.
+        """
+        query = 'DELETE FROM %s WHERE ' % self.table
+        for f_name, f_val in self.extra_fields.iteritems():  # possibly delete only matching fields
+            query += '%s = \'%s\' AND ' % (f_name, f_val)
+        query += '_id IS NOT NULL'
+        return query
 
     def consolidate(self, dict_to_consolidate):
         values = []
@@ -270,13 +353,13 @@ class MySQLConsolidate(Consolidate):
             values.append((k, v['parent'], v['weight']))
 
         with self.db:
-            self.cur.execute('DROP TABLE IF EXISTS %s' % self.table)
-            self.cur.execute('CREATE TABLE %s (_id varchar(100) NOT NULL PRIMARY KEY,'
-                             ' parent varchar(100), weight int)'
-                             'DEFAULT CHARACTER SET utf8 COLLATE utf8_bin'  # necessary to allow unicode comparisons
-                             % self.table)
+            self.cur.execute(self._create_table_query())
+            self.cur.execute(self._clear_old_query())
             query = "INSERT INTO `%s` " % self.table
-            query += "VALUES (%s, %s, %s)"
+            query += 'SET '
+            for f_name, f_val in self.extra_fields.iteritems():
+                query += " %s = '%s', " % (f_name, f_val)
+            query += "_id = %s, parent = %s, weight = %s"  # _id, parent and weight
             self.cur.executemany(query, values)
 
         return dict_to_consolidate.keys()
@@ -299,14 +382,18 @@ class UnionFind:
       in X, it is added to X as one of the members of the merged set.
 
     """
-    def __init__(self, db=None, collection=None, storage='mongodb'):
-        """Create a new empty union-find structure."""
+    def __init__(self, db=None, collection=None, storage='mongodb', **extra_fields):
+        """Create a new empty union-find structure.
+
+        Parameters
+        :param **extra_fields: if storage='mysql', these extra fields are added to each item in the database
+        """
         if db is None or collection is None or storage not in available_storage:
             self.parents = DictParents()
         elif storage == 'mongodb':
             self.parents = MongoParents(db, collection)
         else:  # storage == 'mysql':
-            self.parents = MySQLParents(db, collection)
+            self.parents = MySQLParents(db, collection, **extra_fields)
 
 
     def __getitem__(self, obj):
@@ -352,8 +439,8 @@ class UnionFind:
                 self.parents[el] = cur_set[0]  # el[0] arbitrarily becomes the new set representative, i.e. the parent
             self.parents[obj] = obj  # and obj ends up in a singleton containing itself, only.
 
-    def consolidate(self, db, collection):
-        return self.parents.consolidate(db, collection)
+    def consolidate(self, db, collection, **extra_fields):
+        return self.parents.consolidate(db, collection, **extra_fields)
 
     def items(self):
         """
